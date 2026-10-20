@@ -7,35 +7,49 @@ class Display:
     pass
 
   def render(self, inv):
-    self.render_inventory(inv) #HERE
-    self.render_bundle_tooltip()
+    print(self.get_inventory_display(inv))
+    # self.render_bundle_tooltip()
 
-  def render_inventory(self, inv):
+  def get_inventory_display(self, inv):
     output = ""
 
-    for i in range(len(inv.contents)): # HERE
+    for i in range(len(inv.contents)):
       output += self.get_divider(inv, i)
       output += self.get_item_rows(inv.contents, i)
       output += self.get_item_count_row(inv.contents, i)
 
     output += self.get_divider(inv, inv.height)
+
+    return output
       
   def get_divider(self, inv, y):
     divider = ''
+
+    bar = "-" * (inv.cell_width-1)
+
+    right_sec = "/" + bar
+    left_sec = "\\" + bar
+    norm_sec = "+" + bar
+
+    if not (y == inv.select_y or y == inv.select_y + 1):
+      return (norm_sec * inv.width) + norm_sec[0] + "\n"
     
-    if not (y == inv.select_y or y+1 == inv.select_y):
-      return " " * ((4*inv.width)+1)
+    if y == inv.select_y + 1:
+      right_sec = "\\" + bar
+      left_sec = "/" + bar
 
     for i in range(inv.width):
       if i == inv.select_x:
-        divider += '+---'
+        divider += right_sec
       elif i-1 == inv.select_x:
-        divider += "+   "
+        divider += left_sec
+      else:
+        divider += norm_sec
 
     if i == inv.select_x:
-      divider += "+\n"
+      divider += left_sec[0] + "\n"
     else:
-      divider += " \n"
+      divider += "+\n"
 
     return divider
   
@@ -50,6 +64,8 @@ class Display:
     for item in contents[i]:
       item_rows += item.symbol[1] + "|"
 
+    item_rows += "\n"
+
     return item_rows
   
 
@@ -57,43 +73,46 @@ class Display:
     count_row = "|"
 
     for item in contents[i]:
-      count_str = str(item.count)
-      count_row += (" " * (3 - len(count_str))) + count_str + "|"
+      count_str = str(item.count) if item.count > 0 else ""
+      count_row += (" " * (len(item.symbol[0]) - len(count_str))) + count_str + "|"
+
+    count_row += "\n"
 
     return count_row 
 
 
 class Inventory:
 
-  def __init__(self, w, h):
+  def __init__(self, w, h, cell_w):
     self.width = w
     self.height = h
+    self.cell_width = cell_w
     
     self.contents = []
 
     for i in range(self.height):
       row = []
       for j in range(self.width):
-        row.append(Item("", 0, 0, ["   ","   "]))
+        row.append(Item("", 0, 0, ["     ","     "]))
       self.contents.append(row)
 
     self.select_x = 0
     self.select_y = 0
 
   def add(self, item):
-    if isinstance(item, Item) or isinstance(item, Bundle):
-      self.contents.append(item)
+    if isinstance(item, Item):
+      x, y = self.get_next_open()
+      if x != -1:
+        self.contents[y][x] = item
 
-class Bundle:
-
-  symbol =  [" & ","|_|"] 
-
-  def __init__(self, contents_in = []):
-    self.name = "Bundle"
-    self.contents = contents_in
-    self.selected = 0
-    self.max_stack = 64
-
+  
+  def get_next_open(self):
+    for y, row in enumerate(self.contents):
+      for x, item in enumerate(row):
+        if item.max_stack == 0:
+          return x, y
+    return -1, -1
+  
 
 class Item:
 
@@ -103,6 +122,16 @@ class Item:
     self.max_stack = max_in
     self.symbol = symbol_in
 
+
+class Bundle(Item):
+
+  def __init__(self, contents_in = []):
+    super().__init__("Bundle", 0, 64, ["  &  "," |_| "])
+    
+    self.selected = 0
+    self.contents = contents_in
+
+
 class Game:
 
   def __init__(self):
@@ -111,9 +140,12 @@ class Game:
     self.display = Display()
 
   def init_inventory(self):
-    inv = Inventory(9, 4)
+    inv = Inventory(9, 4, 5)
 
-    inv.add(Item("Wood Plank", 20, 64, ["===","==="]))
+    for i in range(4):
+      inv.add(Item("Wood Plank", 20, 64, ["===","==="]))
+
+    inv.add(Bundle())
 
     return inv
   
