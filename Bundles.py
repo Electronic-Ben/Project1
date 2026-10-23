@@ -1,10 +1,13 @@
 import random
 import os
 
+import curses
+from curses import wrapper
+
 class Display:
 
-  def __init__(self):
-    pass
+  def __init__(self, std_screen):
+    self.stdscr = std_screen
 
   def render(self, inv):
     print(self.get_inventory_display(inv))
@@ -20,12 +23,12 @@ class Display:
 
     output += self.get_divider(inv, inv.height)
 
-    return output
+    return output #HERE
       
   def get_divider(self, inv, y):
     divider = ''
 
-    bar = "-" * (inv.cell_width-1)
+    bar = "-" * (inv.cell_width)
 
     right_sec = "/" + bar
     left_sec = "\\" + bar
@@ -47,26 +50,24 @@ class Display:
         divider += norm_sec
 
     if i == inv.select_x:
-      divider += left_sec[0] + "\n"
+      divider += left_sec[0] + "\n" #HERE
     else:
       divider += "+\n"
 
     return divider
   
   def get_item_rows(self, contents, i):
-    item_rows = "|"
+    row1 = "|"
 
     for item in contents[i]:
       item_rows += item.symbol[0] + "|"
 
-    item_rows += "\n|"
+    row2 = "|"
 
     for item in contents[i]:
-      item_rows += item.symbol[1] + "|"
+      row2 += item.symbol[1] + "|"
 
-    item_rows += "\n"
-
-    return item_rows
+    return row1, row2
   
 
   def get_item_count_row(self, contents, i):
@@ -134,16 +135,16 @@ class Bundle(Item):
 
 class Game:
 
-  def __init__(self):
+  def __init__(self, std_screen):
 
     self.inv = self.init_inventory()
-    self.display = Display()
+    self.display = Display(std_screen)
 
   def init_inventory(self):
-    inv = Inventory(9, 4, 5)
+    inv = Inventory(9, 3, 5)
 
     for i in range(4):
-      inv.add(Item("Wood Plank", 20, 64, ["===","==="]))
+      inv.add(Item("Wood Plank", 20, 64, [" === "," === "]))
 
     inv.add(Bundle())
 
@@ -152,5 +153,12 @@ class Game:
   def run(self):
     self.display.render(self.inv)
 
-game = Game()
-game.run()
+def main(stdscr):
+  game = Game()
+  game.run()
+  
+  
+  
+
+wrapper(main)
+
