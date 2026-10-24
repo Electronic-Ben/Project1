@@ -6,24 +6,27 @@ from curses import wrapper
 
 class Display:
 
-  def __init__(self, std_screen):
-    self.stdscr = std_screen
+  def __init__(self):
+    pass
 
-  def render(self, inv):
-    print(self.get_inventory_display(inv))
+  def render(self, stdscr, inv):
+    inv_display = self.get_inventory_display(inv)
+    for i, line in enumerate(inv_display):
+      stdscr.addstr(i, 0, line)
     # self.render_bundle_tooltip()
 
   def get_inventory_display(self, inv):
-    output = ""
+    output = []
 
     for i in range(len(inv.contents)):
-      output += self.get_divider(inv, i)
-      output += self.get_item_rows(inv.contents, i)
-      output += self.get_item_count_row(inv.contents, i)
+      output.append(self.get_divider(inv, i))
+      output.append(self.get_item_row1(inv.contents, i))
+      output.append(self.get_item_row2(inv.contents, i))
+      output.append(self.get_item_count_row(inv.contents, i))
 
-    output += self.get_divider(inv, inv.height)
+    output.append(self.get_divider(inv, inv.height))
 
-    return output #HERE
+    return output
       
   def get_divider(self, inv, y):
     divider = ''
@@ -56,18 +59,21 @@ class Display:
 
     return divider
   
-  def get_item_rows(self, contents, i):
-    row1 = "|"
+  def get_item_row1(self, contents, i):
+    row = "|"
 
     for item in contents[i]:
-      item_rows += item.symbol[0] + "|"
+      row += item.symbol[0] + "|"
 
-    row2 = "|"
+    return row
+
+  def get_item_row2(self, contents, i):
+    row = "|"
 
     for item in contents[i]:
-      row2 += item.symbol[1] + "|"
+      row += item.symbol[1] + "|"
 
-    return row1, row2
+    return row
   
 
   def get_item_count_row(self, contents, i):
@@ -138,7 +144,8 @@ class Game:
   def __init__(self, std_screen):
 
     self.inv = self.init_inventory()
-    self.display = Display(std_screen)
+    self.display = Display()
+    self.stdscr = std_screen
 
   def init_inventory(self):
     inv = Inventory(9, 3, 5)
@@ -151,14 +158,13 @@ class Game:
     return inv
   
   def run(self):
-    self.display.render(self.inv)
+    self.display.render(self.stdscr, self.inv)
+    self.stdscr.getch()
+
 
 def main(stdscr):
-  game = Game()
+  game = Game(stdscr)
   game.run()
-  
-  
-  
 
 wrapper(main)
 
