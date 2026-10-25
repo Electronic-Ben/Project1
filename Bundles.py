@@ -1,5 +1,6 @@
 import random
-import os
+import sys
+import math
 
 import curses
 from curses import wrapper
@@ -12,8 +13,14 @@ class Display:
   def render(self, stdscr, inv):
     inv_display = self.get_inventory_display(inv)
     for i, line in enumerate(inv_display):
-      stdscr.addstr(i, 0, line)
+      stdscr.addstr(i + inv.y, inv.x, line)
+
+    if inv.mouse_hold.max_stack != 0:
+      stdscr.addstr(inv.my, inv.mx - 1, inv.mouse_hold.symbol[0])
+      stdscr.addstr(inv.my + 1, inv.mx - 1, inv.mouse_hold.symbol[1])
+
     # self.render_bundle_tooltip()
+    stdscr.refresh()
 
   def get_inventory_display(self, inv):
     output = []
@@ -90,12 +97,20 @@ class Display:
 
 class Inventory:
 
-  def __init__(self, w, h, cell_w):
+  def __init__(self, x_in, y_in, w, h, cell_w):
+    self.x = x_in
+    self.y = y_in
+
     self.width = w
     self.height = h
+
+    self.mx = 0
+    self.my = 0
+
     self.cell_width = cell_w
     
     self.contents = []
+    self.mouse_hold = Item("", 0, 0, ["     ","     "])
 
     for i in range(self.height):
       row = []
@@ -119,6 +134,31 @@ class Inventory:
         if item.max_stack == 0:
           return x, y
     return -1, -1
+
+  def set_selected(self, mx, my):
+    mouse_x = mx - self.x
+    mouse_y = my - self.y
+
+    cw = self.cell_width + 1
+    ch = 4
+
+    cell_x = mouse_x // cw
+    cell_y = mouse_y // ch
+
+    if 0 <= cell_x < self.width:
+      self.select_x = cell_x
+
+    if 0 <= cell_y < self.height:
+      self.select_y = cell_y
+
+    self.mx = mx
+    self.my = my
+
+  def select(self):
+    temp = self.mouse_hold
+    self.mouse_hold = self.contents[self.select_y][self.select_x]
+    self.contents[self.select_y][self.select_x] = temp
+
   
 
 class Item:
@@ -142,13 +182,14 @@ class Bundle(Item):
 class Game:
 
   def __init__(self, std_screen):
-
     self.inv = self.init_inventory()
     self.display = Display()
     self.stdscr = std_screen
 
+    curses.mousemask(curses.ALL_MOUSE_EVENTS)
+
   def init_inventory(self):
-    inv = Inventory(9, 3, 5)
+    inv = Inventory(0, 0, 9, 3, 5)
 
     for i in range(4):
       inv.add(Item("Wood Plank", 20, 64, [" === "," === "]))
@@ -159,12 +200,44 @@ class Game:
   
   def run(self):
     self.display.render(self.stdscr, self.inv)
-    self.stdscr.getch()
+
+    while True:
+      key = self.stdscr.getch()
+
+      # q key to quit
+      if key == ord('q'):
+        break
+
+      if key == curses.KEY_MOUSE:
+        try:
+          _, mx, my, _, bstate = curses.getmouse()
+
+          self.inv.set_selected(mx, my)
+
+          if bstate & curses.BUTTON1_PRESSED and self.inv.mouse_hold.max_stack == 0:
+            self.inv.select()
+
+          if bstate & curses.BUTTON1_RELEASED and self.inv.mouse_hold.max_stack != 0:
+            self.inv.select()
+          
+
+        except curses.error:
+          pass
+
+        self.display.render(self.stdscr, self.inv)
+
+      
+
+      
+
+  def end(self):
+    curses.mousemask(0)
 
 
 def main(stdscr):
   game = Game(stdscr)
   game.run()
+  game.end()
 
 wrapper(main)
 
