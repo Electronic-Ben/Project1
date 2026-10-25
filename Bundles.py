@@ -15,6 +15,10 @@ class Display:
     for i, line in enumerate(inv_display):
       stdscr.addstr(i + inv.y, inv.x, line)
 
+    stdscr.addstr(len(inv_display) + inv.y, 0, "Selected Slot: " + inv.contents[inv.select_y][inv.select_x].name + (" " * 20))
+    stdscr.addstr(len(inv_display) + inv.y + 1, 0, "Holding: " + inv.mouse_hold.name + (" " * 20))
+    
+
     if not inv.mouse_hold.is_empty():
       item_width = len(inv.mouse_hold.symbol[0])
       item_height = 3
@@ -35,7 +39,6 @@ class Display:
       stdscr.addstr(draw_y + 1, draw_x, inv.mouse_hold.symbol[1])
       stdscr.addstr(draw_y + 2, draw_x, inv.mouse_hold.get_count_str())
 
-    # self.render_bundle_tooltip()
     stdscr.refresh()
 
   def get_inventory_display(self, inv):
@@ -181,7 +184,7 @@ class Inventory:
         self.contents[self.select_y][self.select_x] = Item()
         return
 
-    if inv_item.name == self.mouse_hold.name and inv_item.count != inv_item.max_stack:
+    if inv_item.name == self.mouse_hold.name and inv_item.count != inv_item.max_stack and not inv_item.is_bundle():
       if inv_item.combine(self.mouse_hold):
         self.mouse_hold = Item()
         return
@@ -205,16 +208,17 @@ class Inventory:
         self.mouse_hold = dropped
         return
 
-    if inv_item.name == self.mouse_hold.name and inv_item.count != inv_item.max_stack:
+    if inv_item.name == self.mouse_hold.name and inv_item.count != inv_item.max_stack and not inv_item.is_bundle():
       if inv_item.combine(self.mouse_hold):
         self.mouse_hold = Item()
       return
 
     if self.mouse_hold.is_empty() and (not inv_item.is_empty()) and (not inv_item.is_bundle()):
       new_item_count = math.floor(inv_item.count / 2)
-      inv_item.remove(new_item_count)
-      self.mouse_hold = Item(inv_item.name, new_item_count, inv_item.max_stack, inv_item.symbol)
-      return
+      if new_item_count > 0:
+        inv_item.remove(new_item_count)
+        self.mouse_hold = Item(inv_item.name, new_item_count, inv_item.max_stack, inv_item.value, inv_item.symbol)
+        return
 
     temp = self.mouse_hold
     self.mouse_hold = inv_item
@@ -224,11 +228,12 @@ class Inventory:
 
 class Item:
 
-  def __init__(self, name_in = "", count_in = 0, max_in = 0, symbol_in = ["     ", "     "]):
+  def __init__(self, name_in = "", count_in = 0, max_in = 0, val = 1, symbol_in = ["     ", "     "]):
     self.name = name_in
     self.count = count_in
     self.max_stack = max_in
     self.symbol = symbol_in
+    self.value = val
 
   def is_empty(self):
     return self.max_stack == 0
@@ -262,7 +267,7 @@ class Item:
 class Bundle(Item):
 
   def __init__(self, contents_in = []):
-    super().__init__("Bundle", 0, 64, ["  &  "," |_| "])
+    super().__init__("Bundle", 0, 64, 64, ["  &  "," |_| "])
     
     self.selected = 0
     self.contents = contents_in
@@ -275,7 +280,9 @@ class Bundle(Item):
 
   def add(self, item):
     if not item.is_empty():
-      bundle_space = self.max_stack - self.count
+      bundle_space = math.floor((self.max_stack - self.count) / item.value)
+      if bundle_space <= 0:
+        return False
       amount = min(bundle_space, item.count)
       for c in self.contents:
         if c.name == item.name:
@@ -285,13 +292,13 @@ class Bundle(Item):
 
           c.add(amount)
           item.remove(amount)
-          self.count += amount
+          self.count += amount * item.value
 
           return item.count == 0
           
-      if self.count < self.max_stack:
-        self.contents.insert(0, Item(item.name, amount, item.max_stack, item.symbol))
-        self.count += amount
+      if self.count < self.max_stack and not item.is_bundle():
+        self.contents.insert(0, Item(item.name, amount, item.max_stack, item.value, item.symbol))
+        self.count += amount * item.value
         item.remove(amount)
         return item.count == 0
         
@@ -299,7 +306,7 @@ class Bundle(Item):
 
   def drop_item(self, index):
     if len(self.contents) > index:
-      self.count -= self.contents[index].count
+      self.count -= self.contents[index].count * self.contents[index].value
       return self.contents.pop(index)
     return False
 
@@ -318,16 +325,24 @@ class Game:
   def init_inventory(self):
     inv = Inventory(0, 0, 9, 3, 5)
     
-    inv.add(Item("Wood Plank", 20, 64, [" === "," === "]))
-    inv.add(Item("Wood Plank", 32, 64, [" === "," === "]))
-    inv.add(Item("Diamond", 10, 64, [" /‾\\ "," \\_/ "]))
-    inv.add(Item("Wood Plank", 54, 64, [" === "," === "]))
+    inv.add(Item("Wood Plank", 20, 64, 1, [" === "," === "]))
+    inv.add(Item("Wood Plank", 32, 64, 1, [" === "," === "]))
+    inv.add(Item("Diamond", 10, 64, 1, [" /‾\\ "," \\_/ "]))
+    inv.add(Item("Wood Plank", 54, 64, 1, [" === "," === "]))
+    inv.add(Item("Iron Ingot", 23, 64, 1, ["  /‾/"," /_/ "]))
+    inv.add(Item("Torch", 63, 64, 1, ["  o  ","  |  "]))
+    inv.add(Item("Firework Rockets", 44, 64, 1, ["  /\\ ","  || "]))
+    inv.add(Item("Empty Bucket", 7, 16, 4, [" | | "," \\_/ "]))
+    inv.add(Item("Elytra", 1, 1, 64, ["/‾V‾\\","|/ \\|"]))
 
+    inv.add(Bundle())
+    inv.add(Bundle())
     inv.add(Bundle())
 
     return inv
   
   def run(self):
+    self.stdscr.clear()
     self.display.render(self.stdscr, self.inv)
 
     while True:
