@@ -15,9 +15,25 @@ class Display:
     for i, line in enumerate(inv_display):
       stdscr.addstr(i + inv.y, inv.x, line)
 
-    if inv.mouse_hold.max_stack != 0:
-      stdscr.addstr(inv.my, inv.mx - 1, inv.mouse_hold.symbol[0])
-      stdscr.addstr(inv.my + 1, inv.mx - 1, inv.mouse_hold.symbol[1])
+    if not inv.mouse_hold.is_empty():
+      item_width = len(inv.mouse_hold.symbol[0])
+      item_height = 3
+
+      inv_left = inv.x + 1
+      inv_right = inv.x + inv.width * (inv.cell_width + 1)
+      inv_top = inv.y + 1
+      inv_bottom = inv.y + inv.height * 4
+
+      draw_x = inv.mx - 2
+      draw_y = inv.my - 1
+
+      # clamp drawing to inv bounds
+      draw_x = max(inv_left, min(draw_x, inv_right - item_width))
+      draw_y = max(inv_top, min(draw_y, inv_bottom - item_height))
+
+      stdscr.addstr(draw_y, draw_x, inv.mouse_hold.symbol[0])
+      stdscr.addstr(draw_y + 1, draw_x, inv.mouse_hold.symbol[1])
+      stdscr.addstr(draw_y + 2, draw_x, inv.mouse_hold.get_count_str())
 
     # self.render_bundle_tooltip()
     stdscr.refresh()
@@ -45,7 +61,7 @@ class Display:
     norm_sec = "+" + bar
 
     if not (y == inv.select_y or y == inv.select_y + 1):
-      return (norm_sec * inv.width) + norm_sec[0] + "\n"
+      return (norm_sec * inv.width) + norm_sec[0]
     
     if y == inv.select_y + 1:
       right_sec = "\\" + bar
@@ -60,9 +76,9 @@ class Display:
         divider += norm_sec
 
     if i == inv.select_x:
-      divider += left_sec[0] + "\n" #HERE
+      divider += left_sec[0]
     else:
-      divider += "+\n"
+      divider += "+"
 
     return divider
   
@@ -87,8 +103,7 @@ class Display:
     count_row = "|"
 
     for item in contents[i]:
-      count_str = str(item.count) if item.count > 0 else ""
-      count_row += (" " * (len(item.symbol[0]) - len(count_str))) + count_str + "|"
+      count_row += item.get_count_str() + "|"
 
     count_row += "\n"
 
@@ -110,12 +125,12 @@ class Inventory:
     self.cell_width = cell_w
     
     self.contents = []
-    self.mouse_hold = Item("", 0, 0, ["     ","     "])
+    self.mouse_hold = Item()
 
     for i in range(self.height):
       row = []
       for j in range(self.width):
-        row.append(Item("", 0, 0, ["     ","     "]))
+        row.append(Item())
       self.contents.append(row)
 
     self.select_x = 0
@@ -131,7 +146,7 @@ class Inventory:
   def get_next_open(self):
     for y, row in enumerate(self.contents):
       for x, item in enumerate(row):
-        if item.max_stack == 0:
+        if item.is_empty():
           return x, y
     return -1, -1
 
@@ -154,20 +169,94 @@ class Inventory:
     self.mx = mx
     self.my = my
 
-  def select(self):
+  def left_select(self):
+    inv_item = self.contents[self.select_y][self.select_x]
+
+    if inv_item.is_bundle():
+      if inv_item.add(self.mouse_hold):
+        self.mouse_hold = Item()
+        return
+    elif self.mouse_hold.is_bundle():
+      if self.mouse_hold.add(inv_item):
+        self.contents[self.select_y][self.select_x] = Item()
+        return
+
+    if inv_item.name == self.mouse_hold.name and inv_item.count != inv_item.max_stack:
+      if inv_item.combine(self.mouse_hold):
+        self.mouse_hold = Item()
+        return
+
     temp = self.mouse_hold
-    self.mouse_hold = self.contents[self.select_y][self.select_x]
+    self.mouse_hold = inv_item
+    self.contents[self.select_y][self.select_x] = temp
+
+  def right_select(self):
+    inv_item = self.contents[self.select_y][self.select_x]
+
+    if self.mouse_hold.is_bundle() and inv_item.is_empty():
+      dropped = self.mouse_hold.drop_item(0)
+      if dropped:
+        self.contents[self.select_y][self.select_x] = dropped
+        return
+
+    if inv_item.is_bundle() and self.mouse_hold.is_empty():
+      dropped = inv_item.drop_item(0)
+      if dropped:
+        self.mouse_hold = dropped
+        return
+
+    if inv_item.name == self.mouse_hold.name and inv_item.count != inv_item.max_stack:
+      if inv_item.combine(self.mouse_hold):
+        self.mouse_hold = Item()
+      return
+
+    if self.mouse_hold.is_empty() and (not inv_item.is_empty()) and (not inv_item.is_bundle()):
+      new_item_count = math.floor(inv_item.count / 2)
+      inv_item.remove(new_item_count)
+      self.mouse_hold = Item(inv_item.name, new_item_count, inv_item.max_stack, inv_item.symbol)
+      return
+
+    temp = self.mouse_hold
+    self.mouse_hold = inv_item
     self.contents[self.select_y][self.select_x] = temp
 
   
 
 class Item:
 
-  def __init__(self, name_in, count_in, max_in, symbol_in):
+  def __init__(self, name_in = "", count_in = 0, max_in = 0, symbol_in = ["     ", "     "]):
     self.name = name_in
     self.count = count_in
     self.max_stack = max_in
     self.symbol = symbol_in
+
+  def is_empty(self):
+    return self.max_stack == 0
+
+  def get_count_str(self):
+    count_str = str(self.count) if self.count > 0 else ""
+    return (" " * (len(self.symbol[0]) - len(count_str) - 1)) + count_str + " "
+
+  def is_bundle(self):
+    return False
+
+  def add(self, x):
+    if x + self.count <= self.max_stack:
+      self.count += x
+      return True
+    return False
+
+  def remove(self, x):
+    if self.count - x >= 0:
+      self.count -= x
+      return True
+    return False
+
+  def combine(self, other):
+    max_add = min(self.max_stack - self.count, other.count)
+    self.add(max_add)
+    other.remove(max_add)
+    return other.count == 0
 
 
 class Bundle(Item):
@@ -178,6 +267,42 @@ class Bundle(Item):
     self.selected = 0
     self.contents = contents_in
 
+  def get_count_str(self):
+    return (" " if self.count < 10 else "") + str(self.count) + "/" + str(self.max_stack)
+
+  def is_bundle(self):
+    return True
+
+  def add(self, item):
+    if not item.is_empty():
+      bundle_space = self.max_stack - self.count
+      amount = min(bundle_space, item.count)
+      for c in self.contents:
+        if c.name == item.name:
+          
+          item_space = c.max_stack - c.count
+          amount = min(amount, item_space)
+
+          c.add(amount)
+          item.remove(amount)
+          self.count += amount
+
+          return item.count == 0
+          
+      if self.count < self.max_stack:
+        self.contents.insert(0, Item(item.name, amount, item.max_stack, item.symbol))
+        self.count += amount
+        item.remove(amount)
+        return item.count == 0
+        
+    return False
+
+  def drop_item(self, index):
+    if len(self.contents) > index:
+      self.count -= self.contents[index].count
+      return self.contents.pop(index)
+    return False
+
 
 class Game:
 
@@ -185,14 +310,18 @@ class Game:
     self.inv = self.init_inventory()
     self.display = Display()
     self.stdscr = std_screen
+    self.right_dragging = False
 
+    curses.curs_set(0)
     curses.mousemask(curses.ALL_MOUSE_EVENTS)
 
   def init_inventory(self):
     inv = Inventory(0, 0, 9, 3, 5)
-
-    for i in range(4):
-      inv.add(Item("Wood Plank", 20, 64, [" === "," === "]))
+    
+    inv.add(Item("Wood Plank", 20, 64, [" === "," === "]))
+    inv.add(Item("Wood Plank", 32, 64, [" === "," === "]))
+    inv.add(Item("Diamond", 10, 64, [" /‾\\ "," \\_/ "]))
+    inv.add(Item("Wood Plank", 54, 64, [" === "," === "]))
 
     inv.add(Bundle())
 
@@ -214,25 +343,28 @@ class Game:
 
           self.inv.set_selected(mx, my)
 
-          if bstate & curses.BUTTON1_PRESSED and self.inv.mouse_hold.max_stack == 0:
-            self.inv.select()
+          if bstate & curses.BUTTON1_PRESSED or bstate & curses.BUTTON1_CLICKED:
+            self.inv.left_select()
+          elif bstate & curses.BUTTON1_RELEASED and not self.inv.mouse_hold.is_empty():
+            self.inv.left_select()
 
-          if bstate & curses.BUTTON1_RELEASED and self.inv.mouse_hold.max_stack != 0:
-            self.inv.select()
-          
+          if bstate & curses.BUTTON3_PRESSED:
+            self.right_dragging = True
+          elif bstate & curses.BUTTON3_RELEASED:
+            if self.right_dragging:
+              self.inv.right_select()
+            self.right_dragging = False
+          elif bstate & curses.BUTTON3_CLICKED:
+            self.inv.right_select()
 
         except curses.error:
           pass
 
         self.display.render(self.stdscr, self.inv)
 
-      
-
-      
-
   def end(self):
+    curses.curs_set(1)
     curses.mousemask(0)
-
 
 def main(stdscr):
   game = Game(stdscr)
