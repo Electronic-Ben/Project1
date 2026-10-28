@@ -271,39 +271,46 @@ class Item:
   def is_bundle(self):
     return False
 
+  # adds count to the item, returns if the add was sucessful
   def add(self, x):
     if x + self.count <= self.max_stack:
       self.count += x
       return True
     return False
 
+  # decrement item count
   def remove(self, x):
     if self.count - x >= 0:
       self.count -= x
       return True
     return False
 
+  # combine 2 stacks
   def combine(self, other):
     max_add = min(self.max_stack - self.count, other.count)
     self.add(max_add)
     other.remove(max_add)
     return other.count == 0
 
-
+# bundle class: in charge of storing items for the bundle
 class Bundle(Item):
 
+  # bundle inherits item properties, also has contents list
   def __init__(self, contents_in = []):
     super().__init__("Bundle", 0, 64, 64, ["  &  "," |_| "])
     
     self.selected = 0
     self.contents = contents_in
 
+  # gets a string to represent the number of items in it
   def get_count_str(self):
     return (" " if self.count < 10 else "") + str(self.count) + "/" + str(self.max_stack)
 
+  # overwrites item method to identify if it is a bundle
   def is_bundle(self):
     return True
 
+  # adds an item stack to itself
   def add(self, item):
     if not item.is_empty():
       bundle_space = math.floor((self.max_stack - self.count) / item.value)
@@ -330,15 +337,17 @@ class Bundle(Item):
         
     return False
 
+  # drops an item from the bundle
   def drop_item(self, index):
     if len(self.contents) > index:
       self.count -= self.contents[index].count * self.contents[index].value
       return self.contents.pop(index)
     return False
 
-
+# game class: in charge of orchastrating all the mechanics
 class Game:
 
+  # stores a display object, stdscr, inventory, and boolean for mouse movement
   def __init__(self, std_screen):
     self.inv = self.init_inventory()
     self.display = Display()
@@ -348,6 +357,7 @@ class Game:
     curses.curs_set(0)
     curses.mousemask(curses.ALL_MOUSE_EVENTS)
 
+  # adds starting items to an inventory and returns it
   def init_inventory(self):
     inv = Inventory(0, 0, 9, 3, 5)
     
@@ -367,6 +377,7 @@ class Game:
 
     return inv
   
+  # main game loop
   def run(self):
     self.stdscr.clear()
     self.display.render(self.stdscr, self.inv)
@@ -403,10 +414,12 @@ class Game:
 
         self.display.render(self.stdscr, self.inv)
 
+  # clean up console after program exits
   def end(self):
     curses.curs_set(1)
     curses.mousemask(0)
 
+# main function passed into special curses wrapper
 def main(stdscr):
   game = Game(stdscr)
   game.run()
